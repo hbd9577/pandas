@@ -3,7 +3,7 @@
 {{ header }}
 
 ======================
-pandas docstring guide
+Pandas Docstring Guide
 ======================
 
 About docstrings and standards

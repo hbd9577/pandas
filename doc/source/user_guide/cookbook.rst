@@ -419,8 +419,52 @@ Levels
 `Prepending a level to a multiindex
 <https://stackoverflow.com/questions/14744068/prepend-a-level-to-a-pandas-multiindex>`__
 
+.. ipython:: python
+ 
+   df = pd.DataFrame(
+       {"A": ["a1", "a1", "a2", "a3"], "B": ["b1", "b2", "b3", "b4"], "Vals": np.random.randn(4)}
+   ).groupby(["A", "B"]).sum()
+   df
+ 
+Prepend a constant label to the existing row MultiIndex using ``pd.concat`` with the ``keys`` argument:
+ 
+.. ipython:: python
+ 
+   df = pd.concat([df], keys=["Foo"], names=["FirstLevel"])
+   df
+
 `Flatten Hierarchical columns
 <https://stackoverflow.com/q/14507794>`__
+
+After a ``groupby().agg()`` with mixed aggregations, pandas produces a hierarchical
+column index. Groupby key columns land back as tuples with an empty second
+level after ``reset_index()``, while aggregated columns get meaningful second labels
+such as ``("tempf", "max")`` and ``("tempf", "min")``:
+
+.. ipython:: python
+
+   df = pd.DataFrame(
+       {
+           "USAF": ["702730"] * 4,
+           "WBAN": [26451] * 4,
+           "day": [1, 2, 3, 4],
+           "s_PC": [1, 0, 1, 3],
+           "s_CL": [0, 0, 10, 0],
+           "tempf": [30.92, 32.00, 23.00, 10.04],
+       }
+   )
+   df = df.groupby(["USAF", "WBAN", "day"]).agg(
+       {"s_PC": "sum", "s_CL": "sum", "tempf": ["max", "min"]}
+   ).reset_index()
+   df
+
+Use ``filter(None, col)`` to drop the empty-string second levels before joining, so
+``("USAF", "")`` becomes "USAF" and ``("tempf", "max")`` becomes "tempf_max":
+
+.. ipython:: python
+
+   df.columns = ["_".join(filter(None, col)) for col in df.columns]
+   df
 
 .. _cookbook.missing_data:
 

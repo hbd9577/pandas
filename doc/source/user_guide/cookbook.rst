@@ -436,11 +436,6 @@ Prepend a constant label to the existing row MultiIndex using ``pd.concat`` with
 `Flatten Hierarchical columns
 <https://stackoverflow.com/q/14507794>`__
 
-After a ``groupby().agg()`` with mixed aggregations, pandas produces a hierarchical
-column index. Groupby key columns land back as tuples with an empty second
-level after ``reset_index()``, while aggregated columns get meaningful second labels
-such as ``("tempf", "max")`` and ``("tempf", "min")``:
-
 .. ipython:: python
 
    df = pd.DataFrame(
@@ -459,10 +454,12 @@ such as ``("tempf", "max")`` and ``("tempf", "min")``:
    df
 
 Use ``filter(None, col)`` to drop the empty-string second levels before joining, so
-``("USAF", "")`` becomes "USAF" and ``("tempf", "max")`` becomes "tempf_max":
-
+``("USAF", "")`` becomes ``"USAF"`` rather than ``"USAF_"``. Columns with a real
+aggregation label are joined normally, so ``("tempf", "max")`` becomes ``"tempf_max"``
+and ``("s_PC", "sum")`` becomes ``"s_PC_sum"``:
+ 
 .. ipython:: python
-
+ 
    df.columns = ["_".join(filter(None, col)) for col in df.columns]
    df
 

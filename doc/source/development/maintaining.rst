@@ -1,7 +1,7 @@
 .. _maintaining:
 
 ******************
-Pandas maintenance
+pandas maintenance
 ******************
 
 This guide is for pandas' maintainers. It may also be interesting to contributors

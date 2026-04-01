@@ -5461,8 +5461,9 @@ class DataFrame(NDFrame, OpsMixin):
             Label of the inserted column.
         value : Scalar, Series, or array-like
             Content of the inserted column.
-        allow_duplicates : bool, optional, default lib.no_default
-            Allow duplicate column labels to be created.
+        allow_duplicates : bool, optional, default False
+            Allow duplicate column labels to be created. If False, 
+            raises a ValueError when a duplicate column is inserted.
 
         See Also
         --------

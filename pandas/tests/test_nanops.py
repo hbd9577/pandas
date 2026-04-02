@@ -1335,3 +1335,65 @@ def test_returned_dtype(disable_bottleneck, dtype, method, using_python_scalars)
         assert result.dtype == np.float64
     else:
         assert result.dtype == dtype
+
+class TestNanopsEmptyInput:
+    """GH#18976 - each nanops function should handle empty inputs on its own."""
+
+    @pytest.mark.parametrize(
+        "func",
+        [
+            nanops.nanmedian,
+            nanops.nanvar,
+            nanops.nanstd,
+            nanops.nanmin,
+            nanops.nanmax,
+        ],
+    )
+    def test_empty_1d_returns_nan(self, func):
+        result = func(np.array([], dtype="f8"))
+        assert np.isnan(result)
+
+    @pytest.mark.parametrize(
+        "func",
+        [
+            nanops.nanmedian,
+            nanops.nanvar,
+            nanops.nanstd,
+            nanops.nanmin,
+            nanops.nanmax,
+        ],
+    )
+    def test_empty_1d_returns_nan_no_bn(self, func, disable_bottleneck):
+        result = func(np.array([], dtype="f8"))
+        assert np.isnan(result)
+
+    @pytest.mark.parametrize(
+        "func",
+        [
+            nanops.nanmedian,
+            nanops.nanvar,
+            nanops.nanstd,
+            nanops.nanmin,
+            nanops.nanmax,
+        ],
+    )
+    def test_empty_2d_axis0_returns_nan_array(self, func):
+        result = func(np.empty((0, 3), dtype="f8"), axis=0)
+        expected = np.full(3, np.nan)
+        tm.assert_numpy_array_equal(result, expected)
+
+    @pytest.mark.parametrize(
+        "func",
+        [
+            nanops.nanmean,
+            nanops.nanmedian,
+            nanops.nanvar,
+            nanops.nanstd,
+            nanops.nanmin,
+            nanops.nanmax,
+        ],
+    )
+    def test_empty_2d_axis0_returns_nan_array_no_bn(self, func, disable_bottleneck):
+        result = func(np.empty((0, 3), dtype="f8"), axis=0)
+        expected = np.full(3, np.nan)
+        tm.assert_numpy_array_equal(result, expected)

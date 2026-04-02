@@ -127,6 +127,7 @@ class bottleneck_switch:
                         kwds[k] = v
 
             if _USE_BOTTLENECK and skipna and _bn_ok_dtype(values.dtype, bn_name) and values.size > 0:
+                # GH-18976 skip bottleneck for empty arrays, let each function handle it
                 if kwds.get("mask", None) is None:
                     # `mask` is not recognised by bottleneck, would raise
                     #  TypeError if called
@@ -988,6 +989,7 @@ def nanvar(
     1.0
     """
     if values.size == 0:
+        # GH-18976
         return _na_for_min_count(values, axis)
     dtype = values.dtype
     mask = _maybe_get_mask(values, skipna, mask)

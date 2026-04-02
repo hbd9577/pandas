@@ -1336,6 +1336,7 @@ def test_returned_dtype(disable_bottleneck, dtype, method, using_python_scalars)
     else:
         assert result.dtype == dtype
 
+
 class TestNanopsEmptyInput:
     """GH#18976 - each nanops function should handle empty inputs on its own."""
 

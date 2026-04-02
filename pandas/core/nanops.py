@@ -126,7 +126,12 @@ class bottleneck_switch:
                     if k not in kwds:
                         kwds[k] = v
 
-            if _USE_BOTTLENECK and skipna and _bn_ok_dtype(values.dtype, bn_name) and values.size > 0:
+            if (
+                _USE_BOTTLENECK
+                and skipna
+                and _bn_ok_dtype(values.dtype, bn_name)
+                and values.size > 0
+            ):
                 # GH-18976 skip bottleneck for empty arrays, let each function handle it
                 if kwds.get("mask", None) is None:
                     # `mask` is not recognised by bottleneck, would raise

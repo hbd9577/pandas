@@ -908,8 +908,12 @@ class ExtensionArray:
             return DatetimeArray._from_sequence(self, dtype=dtype, copy=copy)
 
         elif lib.is_np_dtype(dtype, "m"):
+            from pandas._libs.tslibs import is_unitless
+
             from pandas.core.arrays import TimedeltaArray
 
+            if is_unitless(dtype):
+                dtype = np.dtype("timedelta64[ns]")
             return TimedeltaArray._from_sequence(self, dtype=dtype, copy=copy)
 
         if not copy:

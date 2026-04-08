@@ -85,8 +85,14 @@ def _astype_nansafe(
         raise ValueError("dtype must be np.dtype or ExtensionDtype")
 
     if arr.dtype.kind in "mM":
+        from pandas._libs.tslibs import is_unitless
+
         from pandas.core.construction import ensure_wrapped_if_datetimelike
 
+        if lib.is_np_dtype(dtype, "mM") and is_unitless(dtype):
+            if copy:
+                return arr.copy()
+            return arr
         wrapped = ensure_wrapped_if_datetimelike(arr)  # type: ignore[no-untyped-call]
         res = wrapped.astype(dtype, copy=copy)
         return np.asarray(res)

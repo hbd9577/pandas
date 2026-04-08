@@ -371,6 +371,13 @@ class TimedeltaArray(dtl.TimelikeOps):
                     return self.copy()
                 return self
 
+            from pandas._libs.tslibs import is_unitless
+
+            if is_unitless(dtype):
+                if copy:
+                    return self.copy()
+                return self
+
             if is_supported_dtype(dtype):
                 # unit conversion e.g. timedelta64[s]
                 res_values = astype_overflowsafe(self._ndarray, dtype, copy=False)

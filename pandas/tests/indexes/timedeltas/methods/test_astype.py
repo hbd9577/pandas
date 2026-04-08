@@ -83,15 +83,11 @@ class TestTimedeltaIndex:
             arr.astype("uint32")
 
     def test_astype_timedelta64(self):
-        # GH 13149, GH 13209
+        # GH 13149, GH 13209, GH 59692
         idx = TimedeltaIndex([1e14, "NaT", NaT, np.nan])
 
-        msg = (
-            r"Cannot convert from timedelta64\[ns\] to timedelta64. "
-            "Supported resolutions are 's', 'ms', 'us', 'ns'"
-        )
-        with pytest.raises(ValueError, match=msg):
-            idx.astype("timedelta64")
+        result = idx.astype("timedelta64")
+        tm.assert_index_equal(result, idx)
 
         result = idx.astype("timedelta64[ns]")
         tm.assert_index_equal(result, idx)

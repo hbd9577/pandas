@@ -694,7 +694,7 @@ def nanmean(
     """
     if values.size == 0:
         # GH-18976
-        return _na_for_min_count(values, axis)
+        return cast(float, _na_for_min_count(values, axis))
     if values.dtype == object and len(values) > 1_000 and mask is None:
         # GH#54754 if we are going to fail, try to fail-fast
         nanmean(values[:1000], axis=axis, skipna=skipna)
@@ -954,7 +954,8 @@ def nanstd(
         values = values.view(f"m8[{unit}]")
 
     if values.size == 0:
-        return _na_for_min_count(values, axis)
+        # GH-18976
+        return cast(float, _na_for_min_count(values, axis))
 
     orig_dtype = values.dtype
     values, mask = _get_values(values, skipna, mask=mask)
@@ -1002,7 +1003,7 @@ def nanvar(
     """
     if values.size == 0:
         # GH-18976
-        return _na_for_min_count(values, axis)
+        return cast(float, _na_for_min_count(values, axis))
     dtype = values.dtype
     mask = _maybe_get_mask(values, skipna, mask)
     if dtype.kind in "iu":

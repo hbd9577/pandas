@@ -1402,6 +1402,17 @@ class TestNanopsEmptyInput:
         expected = np.full(3, np.nan)
         tm.assert_numpy_array_equal(result, expected)
 
+    @pytest.mark.parametrize(
+        "func",
+        [
+            nanops.nanmean,
+            nanops.nanmedian,
+            nanops.nanvar,
+            nanops.nanstd,
+            nanops.nanmin,
+            nanops.nanmax,
+        ],
+    )
     def test_empty_2d_axis1_returns_nan_array(self, func):
         result = func(np.empty((3, 0), dtype="f8"), axis=1)
         expected = np.full(3, np.nan)

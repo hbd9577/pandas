@@ -367,7 +367,9 @@ def _wrap_results(result, dtype: np.dtype, fill_value=None):
             result = result.astype(dtype)
     elif dtype.kind == "m":
         if not isinstance(result, np.ndarray):
-            if result == fill_value or np.isnan(result):
+            # GH#18976 use isna() to avoid deprecated comparison of timedelta64 with
+            # generic unit to integer fill_value on numpy-nightly
+            if isna(result):
                 unit = np.datetime_data(dtype)[0]
                 result = np.timedelta64("NaT", unit)  # type: ignore[call-overload]
 

@@ -692,6 +692,9 @@ def nanmean(
     >>> nanops.nanmean(s.values)
     np.float64(1.5)
     """
+    if values.size == 0:
+        # GH-18976
+        return _na_for_min_count(values, axis)
     if values.dtype == object and len(values) > 1_000 and mask is None:
         # GH#54754 if we are going to fail, try to fail-fast
         nanmean(values[:1000], axis=axis, skipna=skipna)
@@ -949,6 +952,9 @@ def nanstd(
     if values.dtype.kind == "M":
         unit = np.datetime_data(values.dtype)[0]
         values = values.view(f"m8[{unit}]")
+
+    if values.size == 0:
+        return _na_for_min_count(values, axis)
 
     orig_dtype = values.dtype
     values, mask = _get_values(values, skipna, mask=mask)

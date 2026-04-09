@@ -1343,6 +1343,7 @@ class TestNanopsEmptyInput:
     @pytest.mark.parametrize(
         "func",
         [
+            nanops.nanmean,
             nanops.nanmedian,
             nanops.nanvar,
             nanops.nanstd,
@@ -1357,6 +1358,7 @@ class TestNanopsEmptyInput:
     @pytest.mark.parametrize(
         "func",
         [
+            nanops.nanmean,
             nanops.nanmedian,
             nanops.nanvar,
             nanops.nanstd,
@@ -1371,6 +1373,7 @@ class TestNanopsEmptyInput:
     @pytest.mark.parametrize(
         "func",
         [
+            nanops.nanmean,
             nanops.nanmedian,
             nanops.nanvar,
             nanops.nanstd,
@@ -1396,5 +1399,10 @@ class TestNanopsEmptyInput:
     )
     def test_empty_2d_axis0_returns_nan_array_no_bn(self, func, disable_bottleneck):
         result = func(np.empty((0, 3), dtype="f8"), axis=0)
+        expected = np.full(3, np.nan)
+        tm.assert_numpy_array_equal(result, expected)
+
+    def test_empty_2d_axis1_returns_nan_array(self, func):
+        result = func(np.empty((3, 0), dtype="f8"), axis=1)
         expected = np.full(3, np.nan)
         tm.assert_numpy_array_equal(result, expected)

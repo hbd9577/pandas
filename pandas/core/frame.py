@@ -5494,7 +5494,7 @@ class DataFrame(NDFrame, OpsMixin):
             Label of the inserted column.
         value : Scalar, Series, or array-like
             Content of the inserted column.
-        allow_duplicates : bool, optional, default False
+        allow_duplicates : bool, default False
             Allow duplicate column labels to be created.
 
         See Also
@@ -7033,7 +7033,7 @@ class DataFrame(NDFrame, OpsMixin):
         col_fill : object, default ''
             If the columns have multiple levels, determines how the other
             levels are named. If None then the index name is repeated.
-        allow_duplicates : bool, optional, default False
+        allow_duplicates : bool, default False
             Allow duplicate column labels to be created.
         names : int, str or 1-dimensional list, default None
             Using the given string, rename the DataFrame column which contains the

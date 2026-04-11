@@ -453,14 +453,14 @@ Prepend a constant label to the existing row MultiIndex using ``pd.concat`` with
    ).reset_index()
    df
 
-Use ``filter(None, col)`` to drop the empty-string second levels before joining, so
+Use a generator expression to drop the empty-string second levels before joining, so
 ``("USAF", "")`` becomes ``"USAF"`` rather than ``"USAF_"``. Columns with a real
 aggregation label are joined normally, so ``("tempf", "max")`` becomes ``"tempf_max"``
 and ``("s_PC", "sum")`` becomes ``"s_PC_sum"``:
 
 .. ipython:: python
 
-   df.columns = ["_".join(filter(None, col)) for col in df.columns]
+   df.columns = ["_".join(c for c in col if c) for col in df.columns]
    df
 
 .. _cookbook.missing_data:

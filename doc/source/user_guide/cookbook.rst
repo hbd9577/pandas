@@ -420,16 +420,16 @@ Levels
 <https://stackoverflow.com/questions/14744068/prepend-a-level-to-a-pandas-multiindex>`__
 
 .. ipython:: python
- 
+
    df = pd.DataFrame(
        {"A": ["a1", "a1", "a2", "a3"], "B": ["b1", "b2", "b3", "b4"], "Vals": np.random.randn(4)}
    ).groupby(["A", "B"]).sum()
    df
- 
+
 Prepend a constant label to the existing row MultiIndex using ``pd.concat`` with the ``keys`` argument:
- 
+
 .. ipython:: python
- 
+
    df = pd.concat([df], keys=["Foo"], names=["FirstLevel"])
    df
 
@@ -457,9 +457,9 @@ Use ``filter(None, col)`` to drop the empty-string second levels before joining,
 ``("USAF", "")`` becomes ``"USAF"`` rather than ``"USAF_"``. Columns with a real
 aggregation label are joined normally, so ``("tempf", "max")`` becomes ``"tempf_max"``
 and ``("s_PC", "sum")`` becomes ``"s_PC_sum"``:
- 
+
 .. ipython:: python
- 
+
    df.columns = ["_".join(filter(None, col)) for col in df.columns]
    df
 

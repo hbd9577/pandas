@@ -1848,14 +1848,23 @@ class TextFileReader(abc.Iterator):
                 )
         else:
             converters = {}
-
+    
+        # Check if we need to distinguish between NA and NaN
+        distinguish_nan_na = False
+        try:
+            from pandas import options as pd_options
+            if hasattr(pd_options, "future") and hasattr(pd_options.future, "distinguish_nan_and_na"):
+                distinguish_nan_na = pd_options.future.distinguish_nan_and_na
+        except (ImportError, AttributeError):
+            pass
+        
         # Converting values to NA
         keep_default_na = options["keep_default_na"]
         floatify = engine != "pyarrow"
         na_values, na_fvalues = _clean_na_values(
-            na_values, keep_default_na, floatify=floatify
+            na_values, keep_default_na, floatify=floatify, distinguish_nan_na=distinguish_nan_na
         )
-
+    
         # handle skiprows; this is internally handled by the
         # c-engine, so only need for python and pyarrow parsers
         if engine == "pyarrow":
@@ -2093,7 +2102,7 @@ def TextParser(*args, **kwds) -> TextFileReader:
     return TextFileReader(*args, **kwds)
 
 
-def _clean_na_values(na_values, keep_default_na: bool = True, floatify: bool = True):
+def _clean_na_values(na_values, keep_default_na: bool = True, floatify: bool = True, distinguish_nan_na: bool = False):
     na_fvalues: set | dict
     if na_values is None:
         if keep_default_na:
@@ -2149,24 +2158,28 @@ def _stringify_na_values(na_values, floatify: bool) -> set[str | float]:
     for x in na_values:
         result.append(str(x))
         result.append(x)
-        try:
-            v = float(x)
 
-            # we are like 999 here
-            if v == int(v):
-                v = int(v)
-                result.append(f"{v}.0")
-                result.append(str(v))
-
-            if floatify:
-                result.append(v)
-        except (TypeError, ValueError, OverflowError):
-            pass
-        if floatify:
+        if distinguish_nan_na and str(x).lower() == "nan":
+            # Keep "nan" as string to later convert to np.nan
+            result.append(x)
+        else:
             try:
-                result.append(int(x))
+                v = float(x)
+
+                # we are like 999 here
+                if v == int(v):
+                    v = int(v)
+                    result.append(f"{v}.0")
+                    result.append(str(v))
+                if floatify:
+                    result.append(v)
             except (TypeError, ValueError, OverflowError):
                 pass
+            if floatify:
+                try:
+                    result.append(int(x))
+                except (TypeError, ValueError, OverflowError):
+                    pass
     return set(result)
 
 

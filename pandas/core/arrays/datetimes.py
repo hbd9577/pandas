@@ -29,12 +29,10 @@ from pandas._libs.tslibs import (
     NaTType,
     OutOfBoundsDatetime,
     OutOfBoundsTimedelta,
-    Resolution,
     Timedelta,
     Timestamp,
     astype_overflowsafe,
     fields,
-    get_resolution,
     get_supported_dtype,
     get_unit_from_dtype,
     ints_to_pydatetime,
@@ -72,7 +70,6 @@ from pandas.core.dtypes.dtypes import (
     ExtensionDtype,
     PeriodDtype,
 )
-from pandas.core.dtypes.missing import isna
 
 from pandas.core.arrays import datetimelike as dtl
 from pandas.core.arrays._ranges import (
@@ -91,7 +88,6 @@ if TYPE_CHECKING:
     from collections.abc import (
         Callable,
         Generator,
-        Iterator,
     )
 
     import pyarrow as pa
@@ -113,9 +109,6 @@ if TYPE_CHECKING:
 
     _TimestampNoneT1 = TypeVar("_TimestampNoneT1", Timestamp, None)
     _TimestampNoneT2 = TypeVar("_TimestampNoneT2", Timestamp, None)
-
-
-_ITER_CHUNKSIZE = 10_000
 
 
 @overload
@@ -152,27 +145,9 @@ def _field_accessor(name: str, field: str, docstring: str | None = None):
         values = self._local_timestamps()
 
         if field in self._bool_ops:
-            result: np.ndarray
-
             if field.endswith(("start", "end")):
-                freq = self.freq
-                month_kw = 12
-                if freq:
-                    kwds = freq.kwds
-                    month_kw = kwds.get("startingMonth", kwds.get("month", month_kw))
-
-                if freq is not None:
-                    freq_name = freq.rule_code
-                else:
-                    freq_name = None
-                result = fields.get_start_end_field(
-                    values, field, freq_name, month_kw, reso=self._creso
-                )
-            else:
-                result = fields.get_date_field(values, field, reso=self._creso)
-
-            # these return a boolean by-definition
-            return result
+                return self._get_start_end_field(field, freq=None)
+            return fields.get_date_field(values, field, reso=self._creso)
 
         result = fields.get_date_field(values, field, reso=self._creso)
         result = self._maybe_mask_results(result, fill_value=None, convert="float64")
@@ -702,10 +677,6 @@ class DatetimeArray(dtl.TimelikeOps, dtl.DatelikeOps):
         """
         return is_date_array_normalized(self.asi8, self.tz, reso=self._creso)
 
-    @property  # NB: override with cache_readonly in immutable subclasses
-    def _resolution_obj(self) -> Resolution:
-        return get_resolution(self.asi8, self.tz, reso=self._creso)
-
     # ----------------------------------------------------------------
     # Array-Like / EA-Interface Methods
 
@@ -716,34 +687,10 @@ class DatetimeArray(dtl.TimelikeOps, dtl.DatelikeOps):
 
         return super().__array__(dtype=dtype, copy=copy)
 
-    def __iter__(self) -> Iterator:
-        """
-        Return an iterator over the boxed values
-
-        Yields
-        ------
-        tstamp : Timestamp
-        """
-        if self.ndim > 1:
-            for i in range(len(self)):
-                yield self[i]
-        else:
-            # convert in chunks of 10k for efficiency
-            data = self.asi8
-            length = len(self)
-            chunksize = _ITER_CHUNKSIZE
-            chunks = (length // chunksize) + 1
-
-            for i in range(chunks):
-                start_i = i * chunksize
-                end_i = min((i + 1) * chunksize, length)
-                converted = ints_to_pydatetime(
-                    data[start_i:end_i],
-                    tz=self.tz,
-                    box="timestamp",
-                    reso=self._creso,
-                )
-                yield from converted
+    def _iter_convert_chunk(self, data: np.ndarray) -> np.ndarray:
+        return ints_to_pydatetime(
+            data.view("i8"), tz=self.tz, box="timestamp", reso=self._creso
+        )
 
     def astype(self, dtype, copy: bool = True):
         # We handle
@@ -1006,10 +953,7 @@ class DatetimeArray(dtl.TimelikeOps, dtl.DatelikeOps):
 
         # No conversion since timestamps are all UTC to begin with
         dtype = tz_to_dtype(tz, unit=self.unit)
-        new_freq = None
-        if isinstance(self.freq, Tick):
-            new_freq = self.freq
-        return self._simple_new(self._ndarray, dtype=dtype, freq=new_freq)
+        return self._simple_new(self._ndarray, dtype=dtype, freq=None)
 
     @dtl.ravel_compat
     def tz_localize(
@@ -1186,15 +1130,7 @@ default 'raise'
         new_dates_dt64 = new_dates.view(f"M8[{self.unit}]")
         dtype = tz_to_dtype(tz, unit=self.unit)
 
-        freq = None
-        if timezones.is_utc(tz) or (len(self) == 1 and not isna(new_dates_dt64[0])):
-            # we can preserve freq
-            # TODO: Also for fixed-offsets
-            freq = self.freq
-        elif tz is None and self.tz is None:
-            # no-op
-            freq = self.freq
-        return self._simple_new(new_dates_dt64, dtype=dtype, freq=freq)
+        return self._simple_new(new_dates_dt64, dtype=dtype, freq=None)
 
     # ----------------------------------------------------------------
     # Conversion Methods - Vectorized analogues of Timestamp methods
@@ -1270,7 +1206,6 @@ default 'raise'
         dt64_values = new_values.view(self._ndarray.dtype)
 
         dta = type(self)._simple_new(dt64_values, dtype=dt64_values.dtype)
-        dta = dta._with_freq("infer")
         if self.tz is not None:
             dta = dta.tz_localize(self.tz)
         return dta
@@ -2199,6 +2134,30 @@ default 'raise'
             stacklevel=find_stack_level(),
         )
         return self.days_in_month
+
+    def _get_start_end_field(self, field: str, freq: BaseOffset | None) -> np.ndarray:
+        """
+        Return boolean array for is_month_start, is_quarter_end, etc.
+
+        Parameters
+        ----------
+        field : str
+        freq : BaseOffset or None
+        """
+        month_kw = 12
+        if freq:
+            kwds = freq.kwds
+            month_kw = kwds.get("startingMonth", kwds.get("month", month_kw))
+
+        if freq is not None:
+            freq_name = freq.rule_code
+        else:
+            freq_name = None
+
+        values = self._local_timestamps()
+        return fields.get_start_end_field(
+            values, field, freq_name, month_kw, reso=self._creso
+        )
 
     _is_month_doc = """
         Indicates whether the date is the {first_or_last} day of the month.

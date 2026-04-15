@@ -52,9 +52,6 @@ static int floatify(PyObject *str, double *result, int *maybe_int) {
       if (0 == strcasecmp(data, "inf")) {
         *result = HUGE_VAL;
         *maybe_int = 0;
-      } else if (0 == strcasecmp(data, "nan")) {
-        *result = NAN;
-        *maybe_int = 0;
       } else {
         goto parsingerror;
       }
@@ -64,12 +61,6 @@ static int floatify(PyObject *str, double *result, int *maybe_int) {
         *maybe_int = 0;
       } else if (0 == strcasecmp(data, "+inf")) {
         *result = HUGE_VAL;
-        *maybe_int = 0;
-      } else if (0 == strcasecmp(data, "-nan")) {
-        *result = -NAN;
-        *maybe_int = 0;
-      } else if (0 == strcasecmp(data, "+nan")) {
-        *result = +NAN;
         *maybe_int = 0;
       } else {
         goto parsingerror;

@@ -91,6 +91,8 @@ from pandas._libs.tslibs import (
 )
 from pandas._libs.tslibs.period import Period
 
+from pandas import get_option
+
 from pandas._libs.missing cimport (
     C_NA,
     checknull,
@@ -2497,7 +2499,6 @@ def maybe_convert_numeric(
         else:
             try:
                 if (isinstance(val, str) and val == "nan"):
-                    from pandas import get_option
                     if (get_option("future.distinguish_nan_and_na")):
                         seen.float_ = True
                         floats[i] = complexes[i] = NaN

@@ -2498,7 +2498,7 @@ def maybe_convert_numeric(
             seen.float_ = True
         else:
             try:
-                if (isinstance(val, str) and val == "nan"):
+                if (isinstance(val, str) and val.lower in ["nan"]):
                     if (get_option("future.distinguish_nan_and_na")):
                         seen.float_ = True
                         floats[i] = complexes[i] = NaN

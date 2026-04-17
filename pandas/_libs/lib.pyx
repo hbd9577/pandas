@@ -2496,13 +2496,13 @@ def maybe_convert_numeric(
         elif is_decimal(val):
             floats[i] = complexes[i] = val
             seen.float_ = True
+        elif (isinstance(val, str) and val.lower() in ["nan"]):
+            if (get_option("future.distinguish_nan_and_na")):
+                seen.float_ = True
+                floats[i] = complexes[i] = NaN
+                continue
         else:
             try:
-                if (isinstance(val, str) and val == "nan"):
-                    if (get_option("future.distinguish_nan_and_na")):
-                        seen.float_ = True
-                        floats[i] = complexes[i] = NaN
-                        continue
                 floatify(val, &fval, &maybe_int)
 
                 if fval in na_values:

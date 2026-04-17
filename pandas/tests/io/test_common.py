@@ -701,9 +701,7 @@ c,nan"""
             keep_default_na=False,
             na_values=[""],
         )["x"]
-        print(result)
         expect = pd.Series(
             data=[1.0, pd.NA, np.nan], index=["a", "b", "c"], dtype="Float64", name="x"
         )
-        print(expect)
         tm.assert_series_equal(expect, result)

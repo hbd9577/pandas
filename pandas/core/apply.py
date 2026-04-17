@@ -197,6 +197,7 @@ def frame_apply(
     kwargs=None,
 ) -> FrameApply:
     """construct and return a row or column based frame apply object"""
+    kwargs = kwargs or {}
     _, func, columns, _ = reconstruct_func(func, **kwargs)
 
     axis = obj._get_axis_number(axis)
@@ -209,6 +210,8 @@ def frame_apply(
                 f"Named aggregation is not supported when {axis=}."
             )
         klass = FrameColumnApply
+    else:
+        raise ValueError(f"No axis named {axis} for object type DataFrame")
 
     return klass(
         obj,
@@ -267,17 +270,17 @@ class Apply(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def agg_or_apply_list_like(
-        self, op_name: Literal["agg", "apply"]
+        self, op_name: Literal["agg", "apply"], obj=None, axis=None
     ) -> DataFrame | Series:
         pass
 
     @abc.abstractmethod
     def agg_or_apply_dict_like(
-        self, op_name: Literal["agg", "apply"]
+        self, op_name: Literal["agg", "apply"], obj=None, axis=None
     ) -> DataFrame | Series:
         pass
 
-    def agg(self) -> DataFrame | Series | None:
+    def agg(self, obj=None, axis=None) -> DataFrame | Series | None:
         """
         Provide an implementation for the aggregators.
 
@@ -286,17 +289,15 @@ class Apply(metaclass=abc.ABCMeta):
         Result of aggregation, or None if agg cannot be performed by
         this method.
         """
-        func = self.func
+        obj = obj if obj is not None else self.obj
+        axis = axis if axis is not None else self.axis
 
-        if isinstance(func, str):
-            return self.apply_str()
-
-        if is_dict_like(func):
-            return self.agg_dict_like()
-        elif is_list_like(func):
-            # we require a list, but not a 'str'
-            return self.agg_list_like()
-
+        if isinstance(self.func, str):
+            return self.apply_str(obj=obj, axis=axis)
+        if is_dict_like(self.func):
+            return self.agg_dict_like(obj=obj, axis=axis)
+        elif is_list_like(self.func):
+            return self.agg_list_like(obj=obj, axis=axis)
         # caller can react
         return None
 
@@ -404,7 +405,7 @@ class Apply(metaclass=abc.ABCMeta):
         except Exception:
             return func(obj, *args, **kwargs)
 
-    def agg_list_like(self) -> DataFrame | Series:
+    def agg_list_like(self, obj=None, axis=None) -> DataFrame | Series:
         """
         Compute aggregation in the case of a list-like argument.
 
@@ -412,13 +413,15 @@ class Apply(metaclass=abc.ABCMeta):
         -------
         Result of aggregation.
         """
-        return self.agg_or_apply_list_like(op_name="agg")
+        return self.agg_or_apply_list_like(op_name="agg", obj=obj, axis=axis)
 
     def compute_list_like(
         self,
         op_name: Literal["agg", "apply"],
         selected_obj: Series | DataFrame,
         kwargs: dict[str, Any],
+        obj=None,
+        axis=None,
     ) -> tuple[list[Hashable] | Index, list[Any]]:
         """
         Compute agg/apply results for like-like input.
@@ -431,6 +434,10 @@ class Apply(metaclass=abc.ABCMeta):
             Data to perform operation on.
         kwargs : dict
             Keyword arguments to pass to the functions.
+        obj : Series or DataFrame, optional
+            Object to use instead of self.obj.
+        axis : int, optional
+            Axis to use instead of self.axis.
 
         Returns
         -------
@@ -441,7 +448,8 @@ class Apply(metaclass=abc.ABCMeta):
             Python objects.
         """
         func = cast("list[AggFuncTypeBase]", self.func)
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
+        axis = axis if axis is not None else self.axis
 
         results = []
         keys: list[Hashable] = []
@@ -451,7 +459,7 @@ class Apply(metaclass=abc.ABCMeta):
             for a in func:
                 colg = obj._gotitem(selected_obj.name, ndim=1, subset=selected_obj)
                 args = (
-                    [self.axis, *self.args]
+                    [axis, *self.args]
                     if include_axis(op_name, colg)
                     else self.args
                 )
@@ -467,7 +475,7 @@ class Apply(metaclass=abc.ABCMeta):
             for index, col in enumerate(selected_obj):
                 colg = obj._gotitem(col, ndim=1, subset=selected_obj.iloc[:, index])
                 args = (
-                    [self.axis, *self.args]
+                    [axis, *self.args]
                     if include_axis(op_name, colg)
                     else self.args
                 )
@@ -494,14 +502,14 @@ class Apply(metaclass=abc.ABCMeta):
             # e.g. a list of scalars
             from pandas import Series
 
-            result = Series(results, index=keys, name=obj.name)
+            result = Series(results, index=keys, name=getattr(obj, "name", None))
             if is_nested_object(result):
                 raise ValueError(
                     "cannot combine transform and aggregation operations"
                 ) from err
             return result
 
-    def agg_dict_like(self) -> DataFrame | Series:
+    def agg_dict_like(self, obj=None, axis=None) -> DataFrame | Series:
         """
         Compute aggregation in the case of a dict-like argument.
 
@@ -509,7 +517,7 @@ class Apply(metaclass=abc.ABCMeta):
         -------
         Result of aggregation.
         """
-        return self.agg_or_apply_dict_like(op_name="agg")
+        return self.agg_or_apply_dict_like(op_name="agg", obj=obj, axis=axis)
 
     def compute_dict_like(
         self,
@@ -517,6 +525,8 @@ class Apply(metaclass=abc.ABCMeta):
         selected_obj: Series | DataFrame,
         selection: Hashable | Sequence[Hashable],
         kwargs: dict[str, Any],
+        obj=None,
+        axis=None,
     ) -> tuple[list[Hashable], list[Any]]:
         """
         Compute agg/apply results for dict-like input.
@@ -531,6 +541,11 @@ class Apply(metaclass=abc.ABCMeta):
             Used by GroupBy, Window, and Resample if selection is applied to the object.
         kwargs : dict
             Keyword arguments to pass to the functions.
+        obj : Series or DataFrame, optional
+            Object to use instead of self.obj.
+        axis : int, optional
+            Accepted for API compatibility with compute_list_like but intentionally
+            unused for dict-like agg.
 
         Returns
         -------
@@ -545,7 +560,10 @@ class Apply(metaclass=abc.ABCMeta):
             SeriesGroupBy,
         )
 
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
+        # axis is intentionally unused: dict-like agg always decomposes
+        # to 1D subsets via _gotitem, so orientation is handled by the
+        # pre-transposed obj passed in by the caller.
         is_groupby = isinstance(obj, (DataFrameGroupBy, SeriesGroupBy))
         func = cast("AggFuncTypeDict", self.func)
         func = self.normalize_dictlike_arg(op_name, selected_obj, func)
@@ -611,11 +629,10 @@ class Apply(metaclass=abc.ABCMeta):
         selected_obj: Series | DataFrame,
         result_index: list[Hashable],
         result_data: list,
+        concat_axis: AxisInt | None = None,
     ):
         from pandas import Index
         from pandas.core.reshape.concat import concat
-
-        obj = self.obj
 
         # Avoid making two isinstance calls in all and any below
         is_ndframe = [isinstance(r, ABCNDFrame) for r in result_data]
@@ -637,7 +654,10 @@ class Apply(metaclass=abc.ABCMeta):
                 ktu._set_names(selected_obj.columns.names)
                 keys_to_use = ktu
 
-            axis: AxisInt = 0 if isinstance(obj, ABCSeries) else 1
+            if concat_axis is not None:
+                axis: AxisInt = concat_axis
+            else:
+                axis = 0 if isinstance(selected_obj, ABCSeries) else 1
             result = concat(
                 results,
                 axis=axis,
@@ -656,17 +676,15 @@ class Apply(metaclass=abc.ABCMeta):
 
             # we have a list of scalars
             # GH 36212 use name only if obj is a series
-            if obj.ndim == 1:
-                obj = cast("Series", obj)
-                name = obj.name
-            else:
-                name = None
+            name = (
+                getattr(selected_obj, "name", None) if selected_obj.ndim == 1 else None
+            )
 
             result = Series(result_data, index=result_index, name=name)
 
         return result
 
-    def apply_str(self) -> DataFrame | Series:
+    def apply_str(self, obj=None, axis=None) -> DataFrame | Series:
         """
         Compute apply in case of a string.
 
@@ -674,10 +692,11 @@ class Apply(metaclass=abc.ABCMeta):
         -------
         result: Series or DataFrame
         """
+        obj = obj if obj is not None else self.obj
+        axis = axis if axis is not None else self.axis
+
         # Caller is responsible for checking isinstance(self.f, str)
         func = cast("str", self.func)
-
-        obj = self.obj
 
         from pandas.core.groupby.generic import (
             DataFrameGroupBy,
@@ -691,15 +710,19 @@ class Apply(metaclass=abc.ABCMeta):
         if callable(method):
             sig = inspect.getfullargspec(method)
             arg_names = (*sig.args, *sig.kwonlyargs)
-            if self.axis != 0 and (
+            if axis != 0 and (
                 "axis" not in arg_names or func in ("corrwith", "skew")
             ):
-                raise ValueError(f"Operation {func} does not support axis=1")
-            if "axis" in arg_names and not isinstance(
-                obj, (SeriesGroupBy, DataFrameGroupBy)
-            ):
-                self.kwargs["axis"] = self.axis
-        return self._apply_str(obj, func, *self.args, **self.kwargs)
+                raise ValueError(f"Operation {func} does not support axis={axis}")
+            kwargs = (
+                {**self.kwargs, "axis": axis}
+                if "axis" in arg_names
+                and not isinstance(obj, (SeriesGroupBy, DataFrameGroupBy))
+                else self.kwargs
+            )
+        else:
+            kwargs = self.kwargs
+        return self._apply_str(obj, func, *self.args, **kwargs)
 
     def apply_list_or_dict_like(self) -> DataFrame | Series:
         """
@@ -823,9 +846,9 @@ class NDFrameApply(Apply):
         return self.obj._get_agg_axis(self.axis)
 
     def agg_or_apply_list_like(
-        self, op_name: Literal["agg", "apply"]
+        self, op_name: Literal["agg", "apply"], obj=None, axis=None
     ) -> DataFrame | Series:
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
         kwargs = self.kwargs
 
         if op_name == "apply":
@@ -841,15 +864,18 @@ class NDFrameApply(Apply):
         if getattr(obj, "axis", 0) == 1:
             raise NotImplementedError("axis other than 0 is not supported")
 
-        keys, results = self.compute_list_like(op_name, obj, kwargs)
+        # obj passed twice: positional (selected_obj) is the data to operate on,
+        # keyword (obj=obj) is the GroupBy wrapper for _gotitem calls.
+        # For NDFrameApply they are the same object, for GroupByApply they differ.
+        keys, results = self.compute_list_like(op_name, obj, kwargs, obj=obj, axis=axis)
         result = self.wrap_results_list_like(keys, results)
         return result
 
     def agg_or_apply_dict_like(
-        self, op_name: Literal["agg", "apply"]
+        self, op_name: Literal["agg", "apply"], obj=None, axis=None
     ) -> DataFrame | Series:
         assert op_name in ["agg", "apply"]
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
 
         kwargs = {}
         if op_name == "apply":
@@ -860,8 +886,11 @@ class NDFrameApply(Apply):
             raise NotImplementedError("axis other than 0 is not supported")
 
         selection = None
+        # obj passed twice: positional (selected_obj) is the data to operate on,
+        # keyword (obj=obj) is the GroupBy wrapper for _gotitem calls.
+        # For NDFrameApply they are the same object, for GroupByApply they differ.
         result_index, result_data = self.compute_dict_like(
-            op_name, obj, selection, kwargs
+            op_name, obj, selection, kwargs, obj=obj, axis=axis
         )
         result = self.wrap_results_dict_like(obj, result_index, result_data)
         return result
@@ -1016,25 +1045,15 @@ class FrameApply(NDFrameApply):
         return self.apply_standard()
 
     def agg(self):
-        obj = self.obj
-        axis = self.axis
-
-        # TODO: Avoid having to change state
-        self.obj = self.obj if self.axis == 0 else self.obj.T
-        self.axis = 0
-
-        result = None
-        try:
+        if self.axis == 1:
+            result = super().agg(obj=self.obj.T, axis=0)
+            if result is not None:
+                result = result.T
+        else:
             result = super().agg()
-        finally:
-            self.obj = obj
-            self.axis = axis
-
-        if axis == 1:
-            result = result.T if result is not None else result
 
         if result is None:
-            result = self.obj.apply(self.func, axis, args=self.args, **self.kwargs)
+            result = self.obj.apply(self.func, self.axis, args=self.args, **self.kwargs)
 
         return result
 
@@ -1223,15 +1242,16 @@ class FrameApply(NDFrameApply):
 
         return result
 
-    def apply_str(self) -> DataFrame | Series:
+    def apply_str(self, obj=None, axis=None) -> DataFrame | Series:
+        obj = obj if obj is not None else self.obj
+        axis = axis if axis is not None else self.axis
         # Caller is responsible for checking isinstance(self.func, str)
         # TODO: GH#39993 - Avoid special-casing by replacing with lambda
         if self.func == "size":
             # Special-cased because DataFrame.size returns a single scalar
-            obj = self.obj
-            value = obj.shape[self.axis]
-            return obj._constructor_sliced(value, index=self.agg_axis)
-        return super().apply_str()
+            value = obj.shape[axis]
+            return obj._constructor_sliced(value, index=obj._get_agg_axis(axis))
+        return super().apply_str(obj=obj, axis=axis)
 
 
 class FrameRowApply(FrameApply):
@@ -1618,9 +1638,9 @@ class GroupByApply(Apply):
         raise NotImplementedError
 
     def agg_or_apply_list_like(
-        self, op_name: Literal["agg", "apply"]
+        self, op_name: Literal["agg", "apply"], obj=None, axis=None
     ) -> DataFrame | Series:
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
         kwargs = self.kwargs
         if op_name == "apply":
             kwargs = {**kwargs, "by_row": False}
@@ -1639,12 +1659,14 @@ class GroupByApply(Apply):
         with com.temp_setattr(
             obj, "as_index", True, condition=hasattr(obj, "as_index")
         ):
-            keys, results = self.compute_list_like(op_name, selected_obj, kwargs)
+            keys, results = self.compute_list_like(
+                op_name, selected_obj, kwargs, obj=obj, axis=axis
+            )
         result = self.wrap_results_list_like(keys, results)
         return result
 
     def agg_or_apply_dict_like(
-        self, op_name: Literal["agg", "apply"]
+        self, op_name: Literal["agg", "apply"], obj=None, axis=None
     ) -> DataFrame | Series:
         from pandas.core.groupby.generic import (
             DataFrameGroupBy,
@@ -1653,7 +1675,7 @@ class GroupByApply(Apply):
 
         assert op_name in ["agg", "apply"]
 
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
         kwargs: dict[str, Any] = {}
         if op_name == "apply":
             by_row = "_compat" if self.by_row else False
@@ -1677,9 +1699,11 @@ class GroupByApply(Apply):
             obj, "as_index", True, condition=hasattr(obj, "as_index")
         ):
             result_index, result_data = self.compute_dict_like(
-                op_name, selected_obj, selection, kwargs
+                op_name, selected_obj, selection, kwargs, obj=obj, axis=axis
             )
-        result = self.wrap_results_dict_like(selected_obj, result_index, result_data)
+        result = self.wrap_results_dict_like(
+            selected_obj, result_index, result_data, concat_axis=1
+        )
         return result
 
 

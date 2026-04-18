@@ -2106,3 +2106,14 @@ def test_multiple_partial_functions_same_name():
     gb = df.groupby("col1")
     result = gb.agg({"col2": [quant50, quant70]})
     tm.assert_frame_equal(result, expected)
+
+
+def test_series_groupby_dict_agg_returns_dataframe():
+    df = DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    sgb = df.groupby("a")["b"]
+
+    result = sgb.agg(sum_val="sum", mean_val="mean")
+
+    assert isinstance(result, DataFrame)
+    assert result.shape == (2, 2)
+    assert list(result.columns) == ["sum_val", "mean_val"]

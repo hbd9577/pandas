@@ -17,6 +17,7 @@ from pandas import (
     date_range,
 )
 import pandas._testing as tm
+from pandas.core.apply import frame_apply
 from pandas.tests.apply.conftest import MockEngineDecorator
 from pandas.tests.frame.common import zip_frames
 from pandas.util.version import Version
@@ -1883,18 +1884,117 @@ def test_apply_timedelta_preserves_resolution():
 
 
 def test_frame_apply_agg_signature_fallback():
-    # GH#65274
-    from pandas.core.apply import frame_apply
-    import pandas.testing as tm
-
+    # GH#65274 agg() must accept obj/axis without mutating instance state
     df = DataFrame({"A": [1, 2], "B": [3, 4]})
-
     applier = frame_apply(df, "sum", axis=0)
 
     custom_df = DataFrame({"X": [10, 20], "Y": [30, 40]})
     result = applier.agg(obj=custom_df, axis=1)
 
     expected = custom_df.sum(axis=1)
+    tm.assert_series_equal(result, expected)
+
+    tm.assert_frame_equal(applier.obj, df)
+    assert applier.axis == 0
+    assert "axis" not in applier.kwargs
+
+
+def test_frame_apply_kwargs_none_does_not_raise():
+    # GH#65274
+    # frame_apply must guard against kwargs=None before **-unpacking into
+    # reconstruct_func. Previously crashed with TypeError: argument after **
+    # must be a mapping, not NoneType.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    applier = frame_apply(df, "sum", axis=0, kwargs=None)
+    assert applier is not None
+
+
+def test_frame_apply_invalid_axis_raises():
+    # GH#65274
+    # The new else-branch in frame_apply must produce a clear ValueError
+    # for any axis that is not 0 or 1, instead of falling through silently
+    # with an unbound local 'klass'.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    with pytest.raises(ValueError, match="No axis named 2"):
+        frame_apply(df, "sum", axis=2)
+
+
+def test_frame_apply_agg_str_custom_obj_axis0_state_unchanged():
+    # GH#65274
+    # FrameApply.agg(axis=0) is a separate branch from axis=1.
+    # Verify state is clean after an axis=0 custom-obj call.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    custom_df = DataFrame({"A": [10, 20], "B": [30, 40]})
+    applier = frame_apply(df, "sum", axis=0)
+
+    result = applier.agg(obj=custom_df, axis=0)
+    tm.assert_series_equal(result, custom_df.sum(axis=0))
+
+    tm.assert_frame_equal(applier.obj, df)
+    assert applier.axis == 0
+    assert "axis" not in applier.kwargs
+
+
+def test_frame_apply_agg_str_kwargs_not_mutated_on_repeated_calls():
+    # GH#65274
+    # apply_str previously injected "axis" into self.kwargs as a side effect.
+    # Call agg twice with different axes — self.kwargs must remain empty both times.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    custom_df = DataFrame({"X": [10, 20], "Y": [30, 40]})
+    applier = frame_apply(df, "sum", axis=0)
+
+    applier.agg(obj=custom_df, axis=1)
+    assert "axis" not in applier.kwargs
+
+    applier.agg(obj=custom_df, axis=0)
+    assert "axis" not in applier.kwargs
+
+
+def test_frame_apply_agg_list_like_custom_obj_axis0():
+    # GH#65274
+    # FrameApply.agg with list-like func + custom obj, axis=0 path.
+    # Exercises agg_or_apply_list_like → compute_list_like →
+    # _agg_list_like_frame_reductions all receiving the custom obj, not self.obj.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    custom_df = DataFrame({"A": [10, 20], "B": [30, 40]})
+    applier = frame_apply(df, ["sum", "mean"], axis=0)
+
+    result = applier.agg(obj=custom_df, axis=0)
+    expected = custom_df.agg(["sum", "mean"])
+    tm.assert_frame_equal(result, expected)
+
+    tm.assert_frame_equal(applier.obj, df)
+    assert applier.axis == 0
+
+
+def test_frame_apply_agg_list_like_custom_obj_axis1():
+    # GH#65274
+    # FrameApply.agg with list-like func + axis=1 with a custom obj.
+    # Exercises the transposition path (obj.T) inside FrameApply.agg
+    # for list-like funcs, distinct from the string-func transposition path.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    custom_df = DataFrame({"A": [10, 20], "B": [30, 40]})
+    applier = frame_apply(df, ["sum", "mean"], axis=0)
+
+    result = applier.agg(obj=custom_df, axis=1)
+    expected = custom_df.T.agg(["sum", "mean"]).T
+    tm.assert_frame_equal(result, expected)
+
+    tm.assert_frame_equal(applier.obj, df)
+    assert applier.axis == 0
+
+
+def test_frame_apply_agg_dict_like_custom_obj():
+    # GH#65274
+    # FrameApply.agg with dict-like func + custom obj.
+    # Exercises agg_or_apply_dict_like → compute_dict_like →
+    # wrap_results_dict_like all receiving the custom obj.
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+    custom_df = DataFrame({"A": [10, 20], "B": [30, 40]})
+    applier = frame_apply(df, {"A": "sum", "B": "mean"}, axis=0)
+
+    result = applier.agg(obj=custom_df, axis=0)
+    expected = custom_df.agg({"A": "sum", "B": "mean"})
     tm.assert_series_equal(result, expected)
 
     tm.assert_frame_equal(applier.obj, df)

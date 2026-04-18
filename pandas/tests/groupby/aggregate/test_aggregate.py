@@ -2109,6 +2109,7 @@ def test_multiple_partial_functions_same_name():
 
 
 def test_series_groupby_dict_agg_returns_dataframe():
+    # GH#65274
     df = DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
     sgb = df.groupby("a")["b"]
 
@@ -2117,3 +2118,57 @@ def test_series_groupby_dict_agg_returns_dataframe():
     assert isinstance(result, DataFrame)
     assert result.shape == (2, 2)
     assert list(result.columns) == ["sum_val", "mean_val"]
+
+    expected = DataFrame(
+        {"sum_val": [30, 30], "mean_val": [15.0, 30.0]},
+        index=Index([1, 2], name="a"),
+    )
+    tm.assert_frame_equal(result, expected)
+
+
+def test_dataframe_groupby_dict_agg_concat_axis():
+    # GH#65274
+    # DataFrameGroupBy dict-like agg goes through GroupByApply.agg_or_apply_dict_like
+    # with concat_axis=1. selected_obj here is a DataFrame, exercising
+    # the other isinstance branch inside wrap_results_dict_like.
+    df = DataFrame({"a": [1, 1, 2], "b": [10, 20, 30], "c": [1, 2, 3]})
+    result = df.groupby("a").agg({"b": "sum", "c": "mean"})
+
+    expected = DataFrame(
+        {"b": [30, 30], "c": [1.5, 3.0]},
+        index=Index([1, 2], name="a"),
+    )
+    tm.assert_frame_equal(result, expected)
+
+
+def test_series_groupby_list_agg_exercises_list_like_path():
+    # GH#65274
+    # GroupByApply.agg_or_apply_list_like gained obj=None, axis=None signature.
+    # Verify list-like agg on SeriesGroupBy still produces correct values —
+    # a regression here would silently return wrong data, not raise.
+    df = DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    sgb = df.groupby("a")["b"]
+
+    result = sgb.agg(["sum", "mean"])
+
+    assert isinstance(result, DataFrame)
+    assert list(result.columns) == ["sum", "mean"]
+    expected = DataFrame(
+        {"sum": [30, 30], "mean": [15.0, 30.0]},
+        index=Index([1, 2], name="a"),
+    )
+    tm.assert_frame_equal(result, expected)
+
+
+def test_wrap_results_dict_like_name_preserved_for_series_groupby():
+    # GH#65274
+    # wrap_results_dict_like previously read `name` from self.obj
+    # It now reads from selected_obj.
+    # When a callable reduces each group to a scalar, the result Series must
+    # carry the source column name.
+    df = DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    sgb = df.groupby("a")["b"]
+
+    result = sgb.agg(lambda x: x.sum())
+
+    assert result.name == "b"

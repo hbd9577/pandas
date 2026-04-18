@@ -852,13 +852,11 @@ class NDFrameApply(Apply):
         if getattr(obj, "axis", 0) == 1:
             raise NotImplementedError("axis other than 0 is not supported")
 
-        # obj passed twice: positional (selected_obj) is the data to operate on,
-        # keyword (obj=obj) is the GroupBy wrapper for _gotitem calls.
-        # For NDFrameApply they are the same object, for GroupByApply they differ.
         if op_name == "agg" and obj.ndim == 2:
             result = self._agg_list_like_frame_reductions(obj=obj)
             if result is not None:
                 return result
+
         keys, results = self.compute_list_like(op_name, obj, kwargs, obj=obj, axis=axis)
         result = self.wrap_results_list_like(keys, results)
         return result
@@ -887,15 +885,12 @@ class NDFrameApply(Apply):
         if not obj.columns.is_unique:
             return None
 
-        # Verify all function names are valid methods on the DataFrame
         for func_name in func_names:
             if not hasattr(obj, func_name):
                 return None
 
         # Compute reductions per dtype group to preserve per-column dtypes.
-        # Using to_frame().T for each result avoids the slow
-        # DataFrame(list-of-Series) construction path.
-        groups = obj.columns.groupby(obj.dtypes)  # type: ignore[arg-type]
+        groups = obj.columns.groupby(obj.dtypes)
         pieces = []
         for dtype in groups:
             cols = groups[dtype]
@@ -909,6 +904,7 @@ class NDFrameApply(Apply):
                 if not isinstance(row, ABCSeries):
                     # Not a reduction (e.g. returns DataFrame), fall back
                     return None
+                # to_frame().T avoids the slow DataFrame(list-of-Series) path
                 group_pieces.append(row.to_frame(func_name).T)
             pieces.append(concat(group_pieces))
 

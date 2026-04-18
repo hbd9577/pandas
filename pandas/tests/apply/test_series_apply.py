@@ -678,3 +678,16 @@ def test_apply_nullable_integer_precision(dtype):
     result = ser.apply(lambda x: x + 2 if pd.notna(x) else x)
     expected = Series([large_int + 2, pd.NA], dtype=dtype)
     tm.assert_series_equal(result, expected)
+
+
+def test_series_apply_agg_default_path_unaffected():
+    # GH#65274
+    # SeriesApply.agg gained obj=None, axis=None params.
+    # Verify the default path is completely unchanged.
+    s = Series([1, 2, 3], name="x")
+
+    assert s.agg("sum") == 6
+    tm.assert_series_equal(
+        s.agg(["sum", "mean"]), Series([6.0, 2.0], index=["sum", "mean"], name="x")
+    )
+    assert s.agg({"total": "sum"})["total"] == 6

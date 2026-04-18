@@ -1880,3 +1880,22 @@ def test_apply_timedelta_preserves_resolution():
     direct = df["a"] - df["b"]
     applied = df.apply(lambda row: row["a"] - row["b"], axis=1)
     assert applied.dtype == direct.dtype
+
+
+def test_frame_apply_agg_signature_fallback():
+    # GH#65274
+    from pandas.core.apply import frame_apply
+    import pandas.testing as tm
+
+    df = DataFrame({"A": [1, 2], "B": [3, 4]})
+
+    applier = frame_apply(df, "sum", axis=0)
+
+    custom_df = DataFrame({"X": [10, 20], "Y": [30, 40]})
+    result = applier.agg(obj=custom_df, axis=1)
+
+    expected = custom_df.sum(axis=1)
+    tm.assert_series_equal(result, expected)
+
+    tm.assert_frame_equal(applier.obj, df)
+    assert applier.axis == 0

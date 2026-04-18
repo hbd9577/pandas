@@ -41,6 +41,7 @@ from pandas.core.dtypes.generic import (
 from pandas.core._numba.executor import generate_apply_looper
 import pandas.core.common as com
 from pandas.core.construction import ensure_wrapped_if_datetimelike
+from pandas.core.reshape.concat import concat
 from pandas.core.util.numba_ import (
     get_jit_arguments,
     prepare_function_arguments,
@@ -368,7 +369,6 @@ class Apply(metaclass=abc.ABCMeta):
         """
         Compute transform in the case of a dict-like func
         """
-        from pandas.core.reshape.concat import concat
 
         obj = self.obj
         args = self.args
@@ -458,11 +458,7 @@ class Apply(metaclass=abc.ABCMeta):
         if selected_obj.ndim == 1:
             for a in func:
                 colg = obj._gotitem(selected_obj.name, ndim=1, subset=selected_obj)
-                args = (
-                    [axis, *self.args]
-                    if include_axis(op_name, colg)
-                    else self.args
-                )
+                args = [axis, *self.args] if include_axis(op_name, colg) else self.args
                 new_res = getattr(colg, op_name)(a, *args, **kwargs)
                 results.append(new_res)
 
@@ -474,11 +470,7 @@ class Apply(metaclass=abc.ABCMeta):
             indices = []
             for index, col in enumerate(selected_obj):
                 colg = obj._gotitem(col, ndim=1, subset=selected_obj.iloc[:, index])
-                args = (
-                    [axis, *self.args]
-                    if include_axis(op_name, colg)
-                    else self.args
-                )
+                args = [axis, *self.args] if include_axis(op_name, colg) else self.args
                 new_res = getattr(colg, op_name)(func, *args, **kwargs)
                 results.append(new_res)
                 indices.append(index)
@@ -489,11 +481,10 @@ class Apply(metaclass=abc.ABCMeta):
         return keys, results
 
     def wrap_results_list_like(
-        self, keys: Iterable[Hashable], results: list[Series | DataFrame]
+        self, keys: Iterable[Hashable], results: list[Series | DataFrame], obj=None
     ):
-        from pandas.core.reshape.concat import concat
 
-        obj = self.obj
+        obj = obj if obj is not None else self.obj
 
         try:
             return concat(results, keys=keys, axis=1, sort=False)
@@ -632,7 +623,6 @@ class Apply(metaclass=abc.ABCMeta):
         concat_axis: AxisInt | None = None,
     ):
         from pandas import Index
-        from pandas.core.reshape.concat import concat
 
         # Avoid making two isinstance calls in all and any below
         is_ndframe = [isinstance(r, ABCNDFrame) for r in result_data]
@@ -710,9 +700,7 @@ class Apply(metaclass=abc.ABCMeta):
         if callable(method):
             sig = inspect.getfullargspec(method)
             arg_names = (*sig.args, *sig.kwonlyargs)
-            if axis != 0 and (
-                "axis" not in arg_names or func in ("corrwith", "skew")
-            ):
+            if axis != 0 and ("axis" not in arg_names or func in ("corrwith", "skew")):
                 raise ValueError(f"Operation {func} does not support axis={axis}")
             kwargs = (
                 {**self.kwargs, "axis": axis}
@@ -867,8 +855,65 @@ class NDFrameApply(Apply):
         # obj passed twice: positional (selected_obj) is the data to operate on,
         # keyword (obj=obj) is the GroupBy wrapper for _gotitem calls.
         # For NDFrameApply they are the same object, for GroupByApply they differ.
+        if op_name == "agg" and obj.ndim == 2:
+            result = self._agg_list_like_frame_reductions(obj=obj)
+            if result is not None:
+                return result
         keys, results = self.compute_list_like(op_name, obj, kwargs, obj=obj, axis=axis)
         result = self.wrap_results_list_like(keys, results)
+        return result
+
+    def _agg_list_like_frame_reductions(self, obj=None) -> DataFrame | None:
+        """
+        Aggregate a list of named functions using DataFrame-level reductions.
+
+        Instead of extracting each column as a Series and calling
+        Series.agg per column, call DataFrame-level reductions directly.
+        Operates per dtype group to preserve per-column dtypes.
+
+        Returns None if the fast path cannot be used (e.g. non-string
+        functions, functions that aren't valid DataFrame methods, or
+        functions that don't return a reduction result).
+        """
+        func = cast("list[AggFuncTypeBase]", self.func)
+
+        if not all(isinstance(f, str) for f in func):
+            return None
+
+        obj = obj if obj is not None else self.obj
+        func_names = cast("list[str]", func)
+
+        # Cannot reindex with duplicate column names
+        if not obj.columns.is_unique:
+            return None
+
+        # Verify all function names are valid methods on the DataFrame
+        for func_name in func_names:
+            if not hasattr(obj, func_name):
+                return None
+
+        # Compute reductions per dtype group to preserve per-column dtypes.
+        # Using to_frame().T for each result avoids the slow
+        # DataFrame(list-of-Series) construction path.
+        groups = obj.columns.groupby(obj.dtypes)  # type: ignore[arg-type]
+        pieces = []
+        for dtype in groups:
+            cols = groups[dtype]
+            sub = obj[cols]
+            group_pieces = []
+            for func_name in func_names:
+                try:
+                    row = getattr(sub, func_name)(*self.args, **self.kwargs)
+                except TypeError:
+                    return None
+                if not isinstance(row, ABCSeries):
+                    # Not a reduction (e.g. returns DataFrame), fall back
+                    return None
+                group_pieces.append(row.to_frame(func_name).T)
+            pieces.append(concat(group_pieces))
+
+        result = concat(pieces, axis=1)
+        result = result.reindex(columns=obj.columns)
         return result
 
     def agg_or_apply_dict_like(
@@ -1044,16 +1089,19 @@ class FrameApply(NDFrameApply):
 
         return self.apply_standard()
 
-    def agg(self):
-        if self.axis == 1:
-            result = super().agg(obj=self.obj.T, axis=0)
+    def agg(self, obj=None, axis=None):
+        obj = obj if obj is not None else self.obj
+        axis = axis if axis is not None else self.axis
+
+        if axis == 1:
+            result = super().agg(obj=obj.T, axis=0)
             if result is not None:
                 result = result.T
         else:
-            result = super().agg()
+            result = super().agg(obj=obj, axis=axis)
 
         if result is None:
-            result = self.obj.apply(self.func, self.axis, args=self.args, **self.kwargs)
+            result = obj.apply(self.func, axis, args=self.args, **self.kwargs)
 
         return result
 
@@ -1541,10 +1589,10 @@ class SeriesApply(NDFrameApply):
         # self.func is Callable
         return self.apply_standard()
 
-    def agg(self):
-        result = super().agg()
+    def agg(self, obj=None, axis=None):
+        result = super().agg(obj=obj, axis=axis)
         if result is None:
-            obj = self.obj
+            obj = obj if obj is not None else self.obj
             func = self.func
             # string, list-like, and dict-like are entirely handled in super
             assert callable(func)

@@ -496,7 +496,7 @@ class DatetimeIndex(DatetimeTimedeltaMixin):
                        dtype='datetime64[us, Asia/Calcutta]', freq=None)
         """
         arr = self._data.normalize()
-        arr = arr._with_freq("infer")
+        arr._freq = to_offset(arr.inferred_freq)
         return type(self)._simple_new(arr, name=self.name)
 
     def tz_convert(self, tz) -> Self:
@@ -922,13 +922,13 @@ class DatetimeIndex(DatetimeTimedeltaMixin):
 
         if inferred_freq is not None:
             dtarr._freq = inferred_freq
-        dtarr._maybe_pin_freq(freq, {"ambiguous": ambiguous})
 
         refs = None
         if not copy and isinstance(data, (Index, ABCSeries)):
             refs = data._references
 
         subarr = cls._simple_new(dtarr, name=name, refs=refs)
+        subarr._pin_freq(freq, {"ambiguous": ambiguous})
         return subarr
 
     # --------------------------------------------------------------------

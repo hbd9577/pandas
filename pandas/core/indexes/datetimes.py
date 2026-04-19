@@ -117,7 +117,14 @@ def _new_DatetimeIndex(cls, d):
         method
         for method in DatetimeArray._datetimelike_methods
         if method
-        not in ("tz_localize", "tz_convert", "normalize", "to_period", "strftime")
+        not in (
+            "tz_localize",
+            "tz_convert",
+            "normalize",
+            "to_period",
+            "strftime",
+            "as_unit",
+        )
     ],
     DatetimeArray,
     wrap=True,
@@ -489,7 +496,7 @@ class DatetimeIndex(DatetimeTimedeltaMixin):
                        dtype='datetime64[us, Asia/Calcutta]', freq=None)
         """
         arr = self._data.normalize()
-        arr = arr._with_freq("infer")
+        arr._freq = to_offset(arr.inferred_freq)
         return type(self)._simple_new(arr, name=self.name)
 
     def tz_convert(self, tz) -> Self:
@@ -783,10 +790,13 @@ class DatetimeIndex(DatetimeTimedeltaMixin):
         from pandas.tseries.frequencies import get_period_alias
 
         if freq is None:
-            dt_freq = self._data.freq
+            dt_freq = self.freq
             freq = self.freqstr
             if dt_freq is not None and hasattr(dt_freq, "_period_dtype_code"):
                 freq = PeriodDtype(dt_freq)._freqstr
+
+            if freq is None:
+                freq = self.inferred_freq
 
             if freq is not None:
                 res = get_period_alias(freq)
@@ -891,21 +901,34 @@ class DatetimeIndex(DatetimeTimedeltaMixin):
                 data = data.copy()
             return cls._simple_new(data, name=name)
 
+        # Extract freq from incoming data before array conversion strips it
+        inferred_freq = None
+        if isinstance(data, DatetimeArray):
+            inferred_freq = data.freq
+        elif isinstance(data, (Index, ABCSeries)):
+            values = data._values
+            if isinstance(values, DatetimeArray):
+                inferred_freq = values.freq
+
         dtarr = DatetimeArray._from_sequence_not_strict(
             data,
             dtype=dtype,
             copy=copy,
             tz=tz,
-            freq=freq,
             dayfirst=dayfirst,
             yearfirst=yearfirst,
             ambiguous=ambiguous,
         )
+
+        if inferred_freq is not None:
+            dtarr._freq = inferred_freq
+
         refs = None
         if not copy and isinstance(data, (Index, ABCSeries)):
             refs = data._references
 
         subarr = cls._simple_new(dtarr, name=name, refs=refs)
+        subarr._pin_freq(freq, {"ambiguous": ambiguous})
         return subarr
 
     # --------------------------------------------------------------------

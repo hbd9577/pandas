@@ -347,9 +347,7 @@ class TimedeltaArray(dtl.TimelikeOps):
             if is_supported_dtype(dtype):
                 # unit conversion e.g. timedelta64[s]
                 res_values = astype_overflowsafe(self._ndarray, dtype, copy=False)
-                return type(self)._simple_new(
-                    res_values, dtype=res_values.dtype, freq=self.freq
-                )
+                return type(self)._simple_new(res_values, dtype=res_values.dtype)
             else:
                 raise ValueError(
                     f"Cannot convert from {self.dtype} to {dtype}. "
@@ -411,7 +409,7 @@ class TimedeltaArray(dtl.TimelikeOps):
             op = getattr(datetimelike_accumulations, name)
             result = op(self._ndarray.copy(), skipna=skipna, **kwargs)
 
-            return type(self)._simple_new(result, freq=None, dtype=self.dtype)
+            return type(self)._simple_new(result, dtype=self.dtype)
         elif name == "cumprod":
             raise TypeError("cumprod not supported for Timedelta.")
 
@@ -1140,7 +1138,6 @@ def sequence_to_td64ns(
                 result[mask] = iNaT
                 return result, inferred_freq
 
-        # If we have float32, cast to float64
         data = data.astype(np.float64, copy=False)
         try:
             data = cast_from_unit_vectorized(data, unit or "ns")

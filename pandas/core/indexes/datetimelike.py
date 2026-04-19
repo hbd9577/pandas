@@ -38,6 +38,7 @@ from pandas._libs.tslibs import (
     to_offset,
 )
 from pandas._libs.tslibs.dtypes import abbrev_to_npy_unit
+from pandas._libs.tslibs.offsets import FY5253Mixin
 from pandas.compat.numpy import function as nv
 from pandas.errors import (
     InvalidIndexError,
@@ -675,6 +676,79 @@ class DatetimeTimedeltaMixin(DatetimeIndexOpsMixin, ABC):
     _is_monotonic_decreasing = Index.is_monotonic_decreasing
     _is_unique = Index.is_unique
 
+    def astype(self, dtype, copy: bool = True):
+        result = super().astype(dtype, copy=copy)
+        if isinstance(result, type(self)):
+            # Preserve freq for unit conversions (e.g. datetime64[ns] -> [us])
+            result._data._freq = self.freq
+        return result
+
+    def putmask(self, mask, value) -> Index:
+        # GH#24555 putmask may modify values out-of-sequence; drop freq
+        result = super().putmask(mask, value)
+        if isinstance(result, type(self)):
+            result._data._freq = None
+        return result
+
+    def _pin_freq(self, freq, validate_kwds: dict) -> None:
+        """
+        Constructor helper to pin the appropriate ``freq`` attribute on
+        ``self._data``.  Assumes ``self._data._freq`` is currently set to any
+        freq inferred from input data.
+        """
+        arr = self._data
+        if freq is None:
+            # user explicitly passed None -> override any inferred_freq
+            arr._freq = None
+        elif freq == "infer":
+            # if arr._freq is *not* None then we already inferred a freq
+            #  and there is nothing left to do
+            if arr._freq is None:
+                # Set _freq directly to bypass duplicative _validate_frequency
+                # check.
+                arr._freq = to_offset(self.inferred_freq)
+        elif freq is lib.no_default:
+            # user did not specify anything, keep inferred freq if the original
+            #  data had one, otherwise do nothing
+            pass
+        elif arr._freq is None:
+            # We cannot inherit a freq from the data, so we need to validate
+            #  the user-passed freq
+            freq = to_offset(freq)
+            type(arr)._validate_frequency(self, freq, **validate_kwds)
+            arr._freq = freq
+        else:
+            # Otherwise we just need to check that the user-passed freq
+            #  doesn't conflict with the one we already have.
+            freq = to_offset(freq)
+            if freq != arr._freq:
+                # GH#61086 freq may be equivalent but not equal (e.g.
+                # QS-FEB vs QS-MAY), so validate against the actual data.
+                if len(self) == 0:
+                    pass
+                elif len(self) == 1:
+                    if not freq.is_on_offset(self[0]):
+                        raise ValueError(
+                            f"Inferred frequency {arr._freq} from passed "
+                            "values does not conform to passed frequency "
+                            f"{freq.freqstr}"
+                        )
+                elif self[0] + freq == self[1]:
+                    # For standard offsets, the step is a deterministic
+                    # function of the date, so agreement on one step proves
+                    # equivalence. For Custom/FY5253 offsets, external
+                    # state (holidays, 52/53-week patterns) could cause
+                    # later steps to diverge, so we validate fully.
+                    if hasattr(freq, "_holidays") or isinstance(freq, FY5253Mixin):
+                        type(arr)._validate_frequency(self, freq, **validate_kwds)
+                else:
+                    raise ValueError(
+                        f"Inferred frequency {arr._freq} from passed "
+                        "values does not conform to passed frequency "
+                        f"{freq.freqstr}"
+                    )
+            arr._freq = freq
+
     def _get_arithmetic_result_freq(self, other) -> BaseOffset | None:
         """
         Check if we can preserve self.freq in addition or subtraction.
@@ -837,10 +911,24 @@ class DatetimeTimedeltaMixin(DatetimeIndexOpsMixin, ABC):
         TimedeltaIndex(['1 days 00:03:00'], dtype='timedelta64[s]', freq=None)
         """
         arr = self._data.as_unit(unit)
-        return type(self)._simple_new(arr, name=self.name)
+        result = type(self)._simple_new(arr, name=self.name)
+        result._data._freq = self.freq
+        return result
 
     def _with_freq(self, freq):
-        arr = self._data._with_freq(freq)
+        # GH#29843
+        if freq is None:
+            pass
+        elif isinstance(freq, BaseOffset):
+            if self.dtype.kind == "m" and not isinstance(freq, (Tick, Day)):
+                raise TypeError("TimedeltaArray/Index freq must be a Tick")
+        elif freq == "infer":
+            freq = to_offset(self.inferred_freq)
+        else:
+            raise ValueError(f"Invalid frequency: {freq!r}")
+
+        arr = self._data.view()
+        arr._freq = freq
         return type(self)._simple_new(arr, name=self._name)
 
     @property
@@ -1132,12 +1220,13 @@ class DatetimeTimedeltaMixin(DatetimeIndexOpsMixin, ABC):
             return self._range_union(other, sort=sort)
 
         if self._can_fast_union(other):
-            result = self._fast_union(other, sort=sort)
             # in the case with sort=None, the _can_fast_union check ensures
             #  that result.freq == self.freq
-            return result
+            return self._fast_union(other, sort=sort)
         else:
-            return super()._union(other, sort)._with_freq("infer")  # type: ignore[union-attr]
+            # super()._union can return an ArrayLike; wrap into an Index first
+            result = self._wrap_setop_result(other, super()._union(other, sort))
+            return result._with_freq("infer")  # type: ignore[attr-defined]
 
     # --------------------------------------------------------------------
     # Join Methods
@@ -1209,9 +1298,6 @@ class DatetimeTimedeltaMixin(DatetimeIndexOpsMixin, ABC):
         """
         Find the `freq` attribute to assign to the result of a __getitem__ lookup.
         """
-        if self.ndim != 1:
-            return None
-
         key = check_array_indexer(self._data, key)  # maybe ndarray[bool] -> slice
         freq = None
         if isinstance(key, slice):

@@ -456,7 +456,7 @@ class SharedTests:
     def test_setitem_object_dtype(self, box, arr1d):
         expected = arr1d.copy()[::-1]
         if expected.dtype.kind in ["m", "M"]:
-            expected = expected._with_freq(None)
+            expected._freq = None
 
         vals = expected
         if box is list:
@@ -496,7 +496,7 @@ class SharedTests:
     def test_setitem_categorical(self, arr1d, as_index):
         expected = arr1d.copy()[::-1]
         if not isinstance(expected, PeriodArray):
-            expected = expected._with_freq(None)
+            expected._freq = None
 
         cat = pd.Categorical(arr1d)
         if as_index:
@@ -652,7 +652,8 @@ class TestDatetimeArray(SharedTests):
 
         dta = dti._data
         result = dta.round(freq="2min")
-        expected = expected._data._with_freq(None)
+        expected = expected._data.view()
+        expected._freq = None
         tm.assert_datetime_array_equal(result, expected)
 
     def test_array_interface(self, datetime_index):
@@ -1109,7 +1110,7 @@ class TestPeriodArray(SharedTests):
     def test_to_timestamp_roundtrip_bday(self):
         # Case where infer_freq inside would choose "D" instead of "B"
         dta = pd.date_range("2021-10-18", periods=3, freq="B", unit="ns")._data
-        parr = dta.to_period()
+        parr = dta.to_period("B")
         result = parr.to_timestamp()
         assert result.freq == "B"
         tm.assert_extension_array_equal(result, dta.as_unit("us"))

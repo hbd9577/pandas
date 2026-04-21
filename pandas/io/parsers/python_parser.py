@@ -65,7 +65,7 @@ from pandas.io.parsers.base_parser import (
     parser_defaults,
     validate_parse_dates_presence,
 )
-
+from pandas import get_option
 if TYPE_CHECKING:
     from collections.abc import (
         Hashable,
@@ -483,13 +483,13 @@ class PythonParser(ParserBase):
                             raise ValueError(f"Bool column has NA values in column {c}")
                     # For Float64Dtype, we need to handle string "nan" specially
                     # before casting, because it should become np.nan, not pd.NA
-                    if isinstance(cast_type, Float64Dtype) and not is_ea:
+                    if (isinstance(cast_type, float)) and not is_ea and get_option("future.distinguish_nan_and_na"):
                         # Convert string "nan" to np.nan before casting
                         if is_object_dtype(cvals.dtype):
                             # Create a copy to avoid modifying original
                             cvals = cvals.copy()
                             # Find indices where value is the string "nan"
-                            nan_mask = np.array([x == "nan" for x in cvals], dtype=bool)
+                            nan_mask = np.array([x.toLower() in ["nan"] for x in cvals], dtype=bool)
                             if nan_mask.any():
                                 # Set these to np.nan
                                 cvals[nan_mask] = np.nan

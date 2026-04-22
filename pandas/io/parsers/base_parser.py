@@ -45,7 +45,7 @@ from pandas import (
     DataFrame,
     DatetimeIndex,
     StringDtype,
-    get_option
+    get_option,
 )
 from pandas.core import algorithms
 from pandas.core.arrays import (
@@ -486,10 +486,11 @@ class ParserBase:
 
         if try_num_bool and is_object_dtype(values.dtype):
             # exclude e.g DatetimeIndex here
-            # handle string "nan" specially when future option is enabled and na_filter is True
-            if (self.na_filter and 
-                get_option('future.distinguish_nan_and_na') and 
-                values.dtype == np.object_):
+            if (
+                self.na_filter
+                and get_option("future.distinguish_nan_and_na")
+                and values.dtype == np.object_
+            ):
                 # Convert string "nan" to np.nan (float NaN) before numeric conversion
                 # This ensures it becomes np.nan, not <NA>
                 for i in range(len(values)):

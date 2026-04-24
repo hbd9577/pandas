@@ -271,6 +271,9 @@ def data_for_twos(data):
 
 
 class TestArrowArray(base.ExtensionTests):
+    def _honors_copy_keyword(self, data) -> bool:
+        return False
+
     def _construct_for_combine_add(self, left, right):
         dtype = left.dtype
 
@@ -665,21 +668,6 @@ class TestArrowArray(base.ExtensionTests):
         result = data.fillna(valid)
         assert result is not data
         tm.assert_extension_array_equal(result, data)
-
-    def test_fillna_readonly(self, data_missing):
-        data = data_missing.copy()
-        data._readonly = True
-
-        # by default fillna(copy=True), then this works fine
-        result = data.fillna(data_missing[1])
-        assert result[0] == data_missing[1]
-        tm.assert_extension_array_equal(data, data_missing)
-
-        # fillna(copy=False) is generally not honored by Arrow-backed array,
-        # but always returns new data -> same result as above
-        result = data.fillna(data_missing[1])
-        assert result[0] == data_missing[1]
-        tm.assert_extension_array_equal(data, data_missing)
 
     @pytest.mark.xfail(
         reason="GH 45419: pyarrow.ChunkedArray does not support views", run=False
@@ -4003,3 +3991,11 @@ def test_timestamp_reduction_consistency(unit, method):
         f"{method} for {unit} returned {type(result)}"
     )
     assert result.unit == unit
+
+
+def test_fillna_zero():
+    # https://github.com/pandas-dev/pandas/issues/62878 - specific pyarrow bug
+    ser = pd.Series([1, 2, 3, 4, pd.NA, 6], dtype="int64[pyarrow]")
+    result = ser.fillna(0)
+    expected = pd.Series([1, 2, 3, 4, 0, 6], dtype="int64[pyarrow]")
+    tm.assert_series_equal(result, expected)

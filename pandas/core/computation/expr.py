@@ -735,7 +735,7 @@ class BaseExprVisitor(ast.NodeVisitor):
                 if any(isinstance(e, ast.Name) for e in elts):
                     cmp_op = ast.Eq() if isinstance(ops[0], ast.In) else ast.NotEq()
                     bool_op = ast.Or() if isinstance(ops[0], ast.In) else ast.And()
-                    new_values = [
+                    new_values: list[ast.expr] = [
                         ast.Compare(left=node.left, ops=[cmp_op], comparators=[elt])
                         for elt in elts
                     ]

@@ -2354,8 +2354,8 @@ default 'raise'
 
         >>> dates.dt.is_year_start
         0    True
-        1    False
-        2    False
+        1    True
+        2    True
         3    True
         dtype: bool
 

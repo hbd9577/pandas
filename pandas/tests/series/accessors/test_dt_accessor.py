@@ -777,6 +777,46 @@ class TestSeriesDatetimeValues:
         )
         tm.assert_series_equal(result, expected)
 
+    def test_dt_is_year_start_freq_business_year_start(self):
+        # GH#58920
+        # Test that Series.dt.is_year_start correctly handles
+        # business year start frequencies
+        dr = date_range("2020-10-30", periods=5, freq="BYS")
+
+        result = Series(dr).dt.is_year_start
+        expected = Series([True, True, True, True, True])
+        tm.assert_series_equal(result, expected)
+
+    def test_dt_is_month_start_freq_business_month_start(self):
+        # GH#58920
+        # Test that Series.dt.is_month_start correctly handles
+        # business month start frequencies
+        dr = date_range("2020-01-01", periods=12, freq="BMS")
+
+        result = Series(dr).dt.is_month_start
+        expected = Series([True] * 12)
+        tm.assert_series_equal(result, expected)
+
+    def test_dt_is_quarter_start_freq_business_quarter_start(self):
+        # GH#58920
+        # Test that Series.dt.is_quarter_start correctly handles
+        # business quarter start frequencies
+        dr = date_range("2020-01-01", periods=8, freq="BQS")
+
+        result = Series(dr).dt.is_quarter_start
+        expected = Series([True] * 8)
+        tm.assert_series_equal(result, expected)
+
+    def test_dt_is_year_start_consistency_with_index(self):
+        # GH#58920
+        # Ensure Series.dt accessor gives same result as DatetimeIndex
+        # for business frequencies
+        dr = date_range("2020-10-30", periods=5, freq="BYS")
+        ser = Series(dr)
+
+        # Both should give the same result
+        tm.assert_series_equal(ser.dt.is_year_start, Series(dr.is_year_start))
+
 
 class TestSeriesPeriodValuesDtAccessor:
     @pytest.mark.parametrize(

@@ -73,10 +73,12 @@ class Properties(PandasDelegate, PandasObject, NoNewAttributesMixin):
     def _get_values(self):
         data = self._parent
         if lib.is_np_dtype(data.dtype, "M"):
-            return DatetimeIndex(data, copy=False, name=self.name)
+            freq = self._try_infer_freq(data)
+            return DatetimeIndex(data, copy=False, name=self.name, freq=freq)
 
         elif isinstance(data.dtype, DatetimeTZDtype):
-            return DatetimeIndex(data, copy=False, name=self.name)
+            freq = self._try_infer_freq(data)
+            return DatetimeIndex(data, copy=False, name=self.name, freq=freq)
 
         elif lib.is_np_dtype(data.dtype, "m"):
             return TimedeltaIndex(data, copy=False, name=self.name)
@@ -87,6 +89,17 @@ class Properties(PandasDelegate, PandasObject, NoNewAttributesMixin):
         raise TypeError(
             f"cannot convert an object of type {type(data)} to a datetimelike index"
         )
+
+    def _try_infer_freq(self, data):
+        from pandas import infer_freq
+
+        try:
+            inferred = infer_freq(data)
+            if inferred is not None:
+                return inferred
+        except (ValueError, TypeError):
+            pass
+        return None
 
     def _delegate_property_get(self, name: str):
         from pandas import Series

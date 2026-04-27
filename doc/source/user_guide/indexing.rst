@@ -80,6 +80,13 @@ of multi-axis indexing.
   :ref:`Advanced Indexing <advanced>` and :ref:`Advanced
   Hierarchical <advanced.advanced_hierarchical>`.
 
+  .. note::
+
+      Unless explicitly stated otherwise, indexing behavior can be
+      expected to follow along the standard small-step semantics of 
+      Python. 
+
+
 * ``.loc``, ``.iloc``, and also ``[]`` indexing can accept a ``callable`` as indexer. See more at :ref:`Selection By Callable <indexing.callable>`.
 
   .. note::

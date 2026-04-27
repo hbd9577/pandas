@@ -84,7 +84,13 @@ of multi-axis indexing.
 
       Unless explicitly stated otherwise, indexing behavior can be
       expected to follow along the standard small-step semantics of 
-      Python. 
+      Python. For example:
+      .. ipython:: python
+         sr = pd.Series([10,9,8,7])
+         sr.loc[[1,2,1]] = [5,4,3]
+         # sr[1] = 3
+
+
 
 
 * ``.loc``, ``.iloc``, and also ``[]`` indexing can accept a ``callable`` as indexer. See more at :ref:`Selection By Callable <indexing.callable>`.

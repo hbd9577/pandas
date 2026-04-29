@@ -87,6 +87,7 @@ of multi-axis indexing.
       Python. For example:
 
       .. ipython:: python
+
          sr = pd.Series([10,9,8,7])
          sr.loc[[1,2,1]] = [5,4,3]
          # sr[1] = 3

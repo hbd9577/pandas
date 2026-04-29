@@ -83,9 +83,9 @@ of multi-axis indexing.
   .. note::
 
       Unless explicitly stated otherwise, indexing behavior can be
-      expected to follow along the standard small-step semantics of 
+      expected to follow along the standard small-step semantics of
       Python. For example:
-  
+
   .. ipython:: python
      sr = pd.Series([10,9,8,7])
      sr.loc[[1,2,1]] = [5,4,3]

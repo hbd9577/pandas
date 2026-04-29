@@ -488,12 +488,14 @@ def array_to_timedelta64(
                 if item == NPY_NAT:
                     ival = NPY_NAT
                 else:
-                    ival = _numeric_to_td64ns(item, parsed_unit, int_reso)
+                    # GH#65150 match the pattern in tslib.pyx: update creso
+                    #  first, then convert using creso as the output resolution.
                     item_reso = int_reso
-
                     state.update_creso(item_reso)
                     if infer_reso:
                         creso = state.creso
+
+                    ival = _numeric_to_td64ns(item, parsed_unit, creso)
 
             elif is_float_object(item):
                 int_item = int(item)
@@ -505,20 +507,19 @@ def array_to_timedelta64(
                     if item == NPY_NAT:
                         ival = NPY_NAT
                     else:
-                        ival = _numeric_to_td64ns(item, parsed_unit, int_reso)
                         item_reso = int_reso
-
                         state.update_creso(item_reso)
                         if infer_reso:
                             creso = state.creso
-                else:
-                    ival = _numeric_to_td64ns(item, parsed_unit, NPY_FR_ns)
 
+                        ival = _numeric_to_td64ns(item, parsed_unit, creso)
+                else:
                     item_reso = NPY_FR_ns
-                    int_reso = NPY_FR_ns
                     state.update_creso(item_reso)
                     if infer_reso:
                         creso = state.creso
+
+                    ival = _numeric_to_td64ns(item, parsed_unit, creso)
 
             elif isinstance(item, Day):
                 # GH#64240: support Day offsets in list-like conversion
@@ -1260,7 +1261,7 @@ cdef class _Timedelta(timedelta):
         return npy_unit_to_abbrev(self._creso)
 
     @property
-    def days(self) -> int:  # TODO(cython3): make cdef property
+    def days(self) -> int:
         """
         Returns the days of the timedelta.
 
@@ -1296,7 +1297,7 @@ cdef class _Timedelta(timedelta):
         return self._d
 
     @property
-    def seconds(self) -> int:  # TODO(cython3): make cdef property
+    def seconds(self) -> int:
         """
         Return the total hours, minutes, and seconds of the timedelta as seconds.
 
@@ -1334,7 +1335,7 @@ cdef class _Timedelta(timedelta):
         return self._h * 3600 + self._m * 60 + self._s
 
     @property
-    def microseconds(self) -> int:  # TODO(cython3): make cdef property
+    def microseconds(self) -> int:
         # NB: using the python C-API PyDateTime_DELTA_GET_MICROSECONDS will fail
         #  (or be incorrect)
         """
@@ -1395,7 +1396,12 @@ cdef class _Timedelta(timedelta):
         """
         # We need to override bc we overrode days/seconds/microseconds
         # TODO: add nanos/1e9?
-        return self.days * 24 * 3600 + self.seconds + self.microseconds / 1_000_000
+        self._ensure_components()
+        return (
+            self._d * 86400
+            + self._h * 3600 + self._m * 60 + self._s
+            + (self._ms * 1000 + self._us) / 1_000_000
+        )
 
     @property
     def unit(self) -> str:
@@ -2402,8 +2408,8 @@ class Timedelta(_Timedelta):
 
         Parameters
         ----------
-        freq : str
-            Frequency string indicating the rounding resolution.
+        freq : str or timedelta
+            Frequency string or timedelta value indicating the rounding resolution.
             It uses the same units as class constructor :class:`~pandas.Timedelta`.
 
         Returns
@@ -2416,9 +2422,9 @@ class Timedelta(_Timedelta):
 
         See Also
         --------
-            Timedelta.floor : Floor the Timedelta to the specified resolution.
-            Timedelta.round : Round the Timedelta to the nearest specified resolution.
-            Timestamp.ceil : Similar method for Timestamp objects.
+        Timedelta.floor : Floor the Timedelta to the specified resolution.
+        Timedelta.ceil : Ceil the Timedelta to the specified resolution.
+        Timestamp.round : Similar method for Timestamp objects.
 
         Examples
         --------
@@ -2426,6 +2432,11 @@ class Timedelta(_Timedelta):
         >>> td
         Timedelta('0 days 00:00:01.001000')
         >>> td.round('s')
+        Timedelta('0 days 00:00:01')
+
+        ``freq`` can also be a timedelta value:
+
+        >>> td.round(freq=pd.Timedelta('1s'))
         Timedelta('0 days 00:00:01')
         """
         return self._round(freq, RoundTo.NEAREST_HALF_EVEN)
@@ -2439,8 +2450,8 @@ class Timedelta(_Timedelta):
 
         Parameters
         ----------
-        freq : str
-            Frequency string indicating the flooring resolution.
+        freq : str or timedelta
+            Frequency string or timedelta value indicating the flooring resolution.
             It uses the same units as class constructor :class:`~pandas.Timedelta`.
 
         Returns
@@ -2450,8 +2461,9 @@ class Timedelta(_Timedelta):
 
         See Also
         --------
-            Timestamp.ceil : Round the Timestamp up to the nearest specified resolution.
-            Timestamp.round : Round the Timestamp to the nearest specified resolution.
+        Timedelta.ceil : Ceil the Timedelta to the specified resolution.
+        Timedelta.round : Round the Timedelta to the specified resolution.
+        Timestamp.floor : Similar method for Timestamp objects.
 
         Examples
         --------
@@ -2459,6 +2471,11 @@ class Timedelta(_Timedelta):
         >>> td
         Timedelta('0 days 00:00:01.001000')
         >>> td.floor('s')
+        Timedelta('0 days 00:00:01')
+
+        ``freq`` can also be a timedelta value:
+
+        >>> td.floor(freq=pd.Timedelta('1s'))
         Timedelta('0 days 00:00:01')
         """
         return self._round(freq, RoundTo.MINUS_INFTY)
@@ -2472,9 +2489,9 @@ class Timedelta(_Timedelta):
 
         Parameters
         ----------
-        freq : str
-            Frequency string indicating the ceiling resolution. Must be a fixed
-            frequency like 's' (second) not 'ME' (month end). See
+        freq : str or timedelta
+            Frequency string or timedelta value indicating the ceiling resolution.
+            Must be a fixed frequency like 's' (second) not 'ME' (month end). See
             :ref:`frequency aliases <timeseries.offset_aliases>` for
             a list of possible `freq` values.
 
@@ -2485,8 +2502,9 @@ class Timedelta(_Timedelta):
 
         See Also
         --------
-            Timedelta.floor : Floor the Timedelta to the specified resolution.
-            Timedelta.round : Round the Timedelta to the nearest specified resolution.
+        Timedelta.floor : Floor the Timedelta to the specified resolution.
+        Timedelta.round : Round the Timedelta to the specified resolution.
+        Timestamp.ceil : Similar method for Timestamp objects.
 
         Examples
         --------
@@ -2494,6 +2512,11 @@ class Timedelta(_Timedelta):
         >>> td
         Timedelta('0 days 00:00:01.001000')
         >>> td.ceil('s')
+        Timedelta('0 days 00:00:02')
+
+        ``freq`` can also be a timedelta value:
+
+        >>> td.ceil(freq=pd.Timedelta('1s'))
         Timedelta('0 days 00:00:02')
         """
         return self._round(freq, RoundTo.PLUS_INFTY)

@@ -14,7 +14,6 @@ from pandas._config import using_string_dtype
 from pandas.compat import is_platform_windows
 from pandas.compat.pyarrow import (
     pa_version_under15p0,
-    pa_version_under17p0,
     pa_version_under18p0,
     pa_version_under19p0,
     pa_version_under20p0,
@@ -1142,10 +1141,6 @@ class TestParquetPyArrow(Base):
                     datetime.datetime(2011, 1, 1, 0, 0),
                     datetime.datetime(2011, 1, 1, 1, 1),
                 ],
-                marks=pytest.mark.xfail(
-                    pa_version_under17p0,
-                    reason="pa.pandas_compat passes 'datetime64' to .astype",
-                ),
             ),
         ],
     )

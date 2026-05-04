@@ -10,7 +10,7 @@ from typing import (
     cast,
 )
 import warnings
-
+import re
 import numpy as np
 
 from pandas._libs import lib
@@ -707,5 +707,10 @@ class CombinedDatetimelikeProperties(
             return TimedeltaProperties(data, orig)
         elif isinstance(data.dtype, PeriodDtype):
             return PeriodProperties(data, orig)
+
+        elif isinstance(data.dtype, obj):
+            if re.match(r"^\d{4}(-|/)[1-9]|1[0-2](-|/)[1-9]|[1,2][0,9]|3[0-1]$", str(data.dtype)):
+            #TODO: will work on this more to ensure it follows correct date formatting, this is just a quick regex and check to get the PR started
+            return DatetimeProperties(data, orig)
 
         raise AttributeError("Can only use .dt accessor with datetimelike values")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from typing import (
     TYPE_CHECKING,
     Literal,
@@ -74,6 +75,35 @@ def _arrow_string_types_mapper() -> Callable:
     return mapping.get
 
 
+def _fix_unitless_column_index_dtype(
+    table: pyarrow.Table,
+) -> pyarrow.Table:
+    """
+    pyarrow reconstructs column indexes by calling level.astype(dtype)
+    with a unitless timedelta64/datetime64 dtype, which pandas rejects.
+    Fix the metadata to include a resolution. GH#59692
+    """
+    schema = table.schema
+    metadata = schema.metadata
+    if metadata is None or b"pandas" not in metadata:
+        return table
+    pandas_meta = json.loads(metadata[b"pandas"])
+    column_indexes = pandas_meta.get("column_indexes", [])
+    modified = False
+    for idx_meta in column_indexes:
+        pandas_type = idx_meta.get("pandas_type", "")
+        numpy_type = idx_meta.get("numpy_type", "")
+        if pandas_type in ("timedelta64", "datetime64") and "[" not in pandas_type:
+            idx_meta["pandas_type"] = numpy_type
+            modified = True
+    if not modified:
+        return table
+    pandas_meta["column_indexes"] = column_indexes
+    updated_metadata = metadata.copy()
+    updated_metadata[b"pandas"] = json.dumps(pandas_meta).encode("utf-8")
+    return table.replace_schema_metadata(updated_metadata)
+
+
 def arrow_table_to_pandas(
     table: pyarrow.Table,
     dtype_backend: DtypeBackend | Literal["numpy"] | lib.NoDefault = lib.no_default,
@@ -125,6 +155,7 @@ def arrow_table_to_pandas(
     else:
         raise NotImplementedError
 
+    table = _fix_unitless_column_index_dtype(table)
     df = table.to_pandas(types_mapper=types_mapper, **to_pandas_kwargs)
     df = _post_convert_dtypes(df, dtype_backend, dtype, names)
     df = _normalize_timezone_dtypes(df)

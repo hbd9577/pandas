@@ -818,6 +818,12 @@ class TestParquetPyArrow(Base):
         df = pd.DataFrame({"a": pd.timedelta_range("1 day", periods=3)})
         check_round_trip(df, temp_file, pa)
 
+    def test_timedelta_column_index(self, pa, temp_file):
+        td = pd.timedelta_range("1 day", periods=3)
+        df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+        df.columns = td
+        check_round_trip(df, temp_file, pa)
+
     def test_unsupported(self, pa, temp_file):
         # mixed python objects
         df = pd.DataFrame({"a": ["a", 1, 2.0]})

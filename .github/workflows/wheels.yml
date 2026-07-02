@@ -15,9 +15,6 @@ name: Wheel builder
 on:
   release:
     types: [published]
-  schedule:
-  # 3:27 UTC every day
-  - cron: "27 3 * * *"
   push:
   pull_request:
     types: [labeled, opened, synchronize, reopened]
@@ -42,7 +39,6 @@ jobs:
     permissions:
       contents: read
     if: >-
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'release' ||
       (github.event_name == 'pull_request' &&
@@ -78,7 +74,6 @@ jobs:
       contents: read
     name: Build wheel for ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}
     if: >-
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'release' ||
       (github.event_name == 'pull_request' &&
@@ -158,8 +153,7 @@ jobs:
       contents: read
     if: >
       github.repository == 'pandas-dev/pandas' &&
-      (github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     needs:
       - build_sdist
       - build_wheels
